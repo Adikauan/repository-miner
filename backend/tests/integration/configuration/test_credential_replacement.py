@@ -1,0 +1,2 @@
+from tests.integration.test_persistence import test_credential_replacement_preserves_mining_records
+

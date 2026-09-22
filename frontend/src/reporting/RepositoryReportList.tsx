@@ -1,0 +1,6 @@
+import { Alert, Button, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import { Page, RepositoryReportItem } from "./api";
+
+export function RepositoryReportList({ page, onPage }: { page: Page<RepositoryReportItem>; onPage: (offset: number) => void }) {
+  return <Stack spacing={1}><Typography variant="h6">Repositories</Typography>{page.items.length === 0 ? <Typography color="text.secondary">Nenhum repository nesta execução.</Typography> : <Table size="small"><TableHead><TableRow><TableCell>Repository</TableCell><TableCell>Branch</TableCell><TableCell>Status</TableCell><TableCell>Falha</TableCell></TableRow></TableHead><TableBody>{page.items.map((item) => <TableRow key={item.id ?? item.repository_id}><TableCell>{item.repository_id}</TableCell><TableCell>{item.branch}</TableCell><TableCell>{item.status}</TableCell><TableCell>{item.failure_reason ? <Alert severity="error">{item.failure_reason}</Alert> : "—"}</TableCell></TableRow>)}</TableBody></Table>}{page.offset > 0 && <Button onClick={() => onPage(Math.max(0, page.offset - page.limit))}>Página anterior</Button>}{page.items.length === page.limit && <Button onClick={() => onPage(page.offset + page.limit)}>Próxima página</Button>}</Stack>;
+}

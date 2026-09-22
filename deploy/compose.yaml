@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: repository_miner
+      POSTGRES_USER: repository_miner
+      POSTGRES_PASSWORD: change-me
+    ports: ["5432:5432"]
+    volumes: ["repository-miner-db:/var/lib/postgresql/data"]
+  backend:
+    build: ../backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      TICKET_PEPPER: ${TICKET_PEPPER}
+    ports: ["8000:8000"]
+    depends_on: [db]
+volumes:
+  repository-miner-db:
+

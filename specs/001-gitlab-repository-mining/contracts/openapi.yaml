@@ -1,0 +1,665 @@
+openapi: 3.1.0
+info:
+  title: Repository Miner API
+  version: 0.3.0
+  description: >-
+    Durable REST contract for incremental GitLab commit-author monitoring. Operator identity is
+    validated by the hosting environment; this API does not provide operator registration, login,
+    password, or account-management operations.
+servers:
+  - url: /api/v1
+paths:
+  /configurations:
+    get:
+      operationId: listConfigurations
+      responses:
+        "200":
+          description: Configurations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfigurationPage" }
+    post:
+      operationId: createConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfigurationWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Configuration" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /configurations/{configurationId}:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+    get:
+      operationId: getConfiguration
+      responses:
+        "200":
+          description: Configuration without credential value
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Configuration" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: updateConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfigurationWrite" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Configuration" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /configurations/{configurationId}/connection-tests:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+    post:
+      operationId: testGitLabConnection
+      description: >-
+        On success, records validation for the configuration's exact current GitLab URL and
+        credential reference. URL or credential replacement invalidates this state until another
+        successful test.
+      responses:
+        "200":
+          description: Safe GitLab connectivity outcome
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectionResult" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /configurations/{configurationId}/repository-tree:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+    get:
+      operationId: getRepositoryTree
+      responses:
+        "200":
+          description: Accessible GitLab hierarchy
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RepositoryTreeNode" }
+        "502": { $ref: "#/components/responses/UpstreamFailure" }
+  /configurations/{configurationId}/repository-selections:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+    put:
+      operationId: replaceRepositorySelections
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rules]
+              properties:
+                target_branch: { type: string, minLength: 1, default: QA }
+                rules:
+                  type: array
+                  items: { $ref: "#/components/schemas/SelectionRule" }
+      responses:
+        "200": { description: Saved branch and repository selection after successful connection validation }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /configurations/{configurationId}/repositories/{repositoryId}/branches/{branch}/baseline-reset:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+      - name: repositoryId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: branch
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: resetRepositoryBaseline
+      description: >-
+        Explicitly recovers a divergent history. Requires a valid host-authenticated operator,
+        preserves the previous checkpoint and all historical records, and records an immutable audit.
+      security:
+        - hostAuthentication: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "200":
+          description: Baseline reset recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BaselineReset" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/HistoryDiverged" }
+  /configurations/{configurationId}/allowed-users:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+    put:
+      operationId: replaceAllowedUsers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [users]
+              properties:
+                users:
+                  type: array
+                  minItems: 1
+                  items: { $ref: "#/components/schemas/AllowedUser" }
+      responses:
+        "200": { description: Saved normalized allowed-user list }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /configurations/{configurationId}/credential-incidents:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+    post:
+      operationId: markGitLabCredentialCompromised
+      description: >-
+        Requires a valid host-authenticated operator. The validated operator identity is obtained
+        by the HTTP adapter and recorded in the secret-free incident audit; it is not accepted in
+        the request body.
+      security:
+        - hostAuthentication: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [safe_reason]
+              properties:
+                safe_reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "201":
+          description: Credential blocked and incident recorded without the secret
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CredentialIncident" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /configurations/{configurationId}/credential-replacements:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+    post:
+      operationId: replaceGitLabCredential
+      description: >-
+        Requires a valid host-authenticated operator. The validated operator identity is recorded
+        in the replacement audit and is not accepted in the request body. An active credential may
+        be replaced preventively; a compromised credential must be replaced before further GitLab
+        use. Replacement preserves checkpoints, executions, verifications, and alerts, updates the
+        configuration to the new active credential, and invalidates connection validation until a
+        successful connection test.
+      security:
+        - hostAuthentication: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gitlab_token]
+              properties:
+                gitlab_token: { type: string, writeOnly: true, minLength: 1 }
+      responses:
+        "200":
+          description: New credential stored and replacement audit recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CredentialReplacement" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /configurations/{configurationId}/executions:
+    parameters:
+      - $ref: "#/components/parameters/ConfigurationId"
+    post:
+      operationId: startManualExecution
+      responses:
+        "202":
+          description: Execution accepted even when scheduling is disabled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Execution" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /executions:
+    get:
+      operationId: listExecutions
+      parameters:
+        - name: configuration_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/ExecutionStatus" }
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Execution history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionPage" }
+  /executions/{executionId}:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionId"
+    get:
+      operationId: getExecution
+      responses:
+        "200":
+          description: Authoritative execution snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Execution" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /executions/{executionId}/repositories:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionId"
+      - $ref: "#/components/parameters/Cursor"
+    get:
+      operationId: listExecutionRepositories
+      responses:
+        "200":
+          description: Repository-run page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenericPage" }
+  /executions/{executionId}/commits:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionId"
+      - $ref: "#/components/parameters/Cursor"
+    get:
+      operationId: listExecutionCommits
+      responses:
+        "200":
+          description: Commit-verification page containing metadata only
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommitVerificationPage" }
+  /executions/{executionId}/unauthorized-commits:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionId"
+      - $ref: "#/components/parameters/Cursor"
+    get:
+      operationId: listUnauthorizedCommits
+      description: >-
+        Returns only alerts originally detected by this execution. Alerts from reused prior
+        verifications are not projected into this execution.
+      responses:
+        "200":
+          description: Detailed unauthorized-author alerts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UnauthorizedCommitPage" }
+  /executions/{executionId}/failures:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionId"
+      - $ref: "#/components/parameters/Cursor"
+    get:
+      operationId: listExecutionFailures
+      responses:
+        "200":
+          description: Repository failure page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenericPage" }
+  /executions/{executionId}/report:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionId"
+    get:
+      operationId: getExecutionReport
+      responses:
+        "200":
+          description: Durable report with reconciled counters
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Report" }
+  /executions/{executionId}/websocket-tickets:
+    parameters:
+      - $ref: "#/components/parameters/ExecutionId"
+    post:
+      operationId: createExecutionWebSocketTicket
+      description: >-
+        Requires a valid identity supplied and validated by the hosting environment plus execution
+        authorization. The operator identity comes from AuthenticatedOperatorProvider and is never
+        accepted in the request body. Returns an opaque ticket bound to that operator and execution;
+        it expires after 60 seconds and is consumed by the first valid WebSocket connection. GitLab
+        credentials and other persistent credentials are never accepted as WebSocket credentials.
+      security:
+        - hostAuthentication: []
+      responses:
+        "201":
+          description: Ticket issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebSocketTicket" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  securitySchemes:
+    hostAuthentication:
+      type: http
+      scheme: bearer
+      bearerFormat: host-issued credential
+      description: >-
+        Transport representation of an identity validated by the hosting environment. The backend
+        adapter maps it to AuthenticatedOperator; application use cases do not depend on this bearer
+        representation, and deployments may replace the adapter and concrete mechanism.
+  parameters:
+    ConfigurationId:
+      name: configurationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ExecutionId:
+      name: executionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+  responses:
+    ValidationError:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: State conflict, including active execution or compromised credential
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    HistoryDiverged:
+      description: Stored checkpoint cannot be reconciled with the current branch history
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Error"
+              - type: object
+                properties:
+                  code: { type: string, enum: [history_diverged] }
+    UpstreamFailure:
+      description: >-
+        Safe GitLab integration failure. Tokens, authorization data, and raw provider payloads are
+        never included.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/GitLabIntegrationError" }
+    Unauthorized:
+      description: Authentication required or invalid
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Operator lacks resource authorization
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+        trace_id: { type: string }
+    GitLabIntegrationError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [code, message, trace_id, retryable]
+          properties:
+            code:
+              type: string
+              enum: [gitlab_timeout, gitlab_unavailable, gitlab_rate_limited, gitlab_unexpected_response, gitlab_malformed_payload]
+            message: { type: string, description: Safe application-owned message without provider payload or secrets }
+            retryable: { type: boolean }
+            retry_after: { type: [string, "null"], format: date-time, description: Sanitized provider guidance when available }
+    ConnectionResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        safe_message: { type: [string, "null"] }
+    ConfigurationWrite:
+      type: object
+      required: [name, gitlab_base_url, timezone, schedule]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        gitlab_base_url: { type: string, format: uri }
+        gitlab_token: { type: [string, "null"], writeOnly: true }
+        timezone: { type: string }
+        enabled: { type: boolean, default: false }
+        schedule: { $ref: "#/components/schemas/Schedule" }
+    Configuration:
+      type: object
+      required: [id, name, gitlab_base_url, timezone, enabled, schedule, credential_status, connection_validated]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        gitlab_base_url: { type: string, format: uri }
+        target_branch: { type: [string, "null"], description: Persisted with repository scope only after successful connection validation; defaults to QA on first save }
+        timezone: { type: string }
+        enabled: { type: boolean }
+        schedule: { $ref: "#/components/schemas/Schedule" }
+        credential_status: { type: string, enum: [active, compromised], description: Status of the credential currently linked to the configuration; replaced is historical only }
+        connection_validated: { type: boolean, description: True only when validation matches the current GitLab URL and credential reference }
+    ConfigurationPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Configuration" }
+        next_cursor: { type: [string, "null"] }
+    Schedule:
+      type: object
+      required: [recurrence, local_time]
+      properties:
+        recurrence: { type: string, enum: [daily, weekly, monthly] }
+        local_time: { type: string, format: time }
+        weekday: { type: [integer, "null"], minimum: 1, maximum: 7 }
+        day_of_month: { type: [integer, "null"], minimum: 1, maximum: 31, description: Missing days use the month's last calendar day }
+    RepositoryTreeNode:
+      type: object
+      required: [kind, external_id, name, path, children]
+      properties:
+        kind: { type: string, enum: [group, subgroup, repository] }
+        external_id: { type: string }
+        name: { type: string }
+        path: { type: string }
+        archived: { type: boolean, default: false }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/RepositoryTreeNode" }
+    SelectionRule:
+      type: object
+      required: [kind, external_id, path, mode]
+      properties:
+        kind: { type: string, enum: [group, subgroup, repository] }
+        external_id: { type: string }
+        path: { type: string }
+        mode: { type: string, enum: [include, exclude] }
+    AllowedUser:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, description: Compared after trim and case normalization }
+    CredentialIncident:
+      type: object
+      required: [id, credential_status, incident_status, suspected_at, suspected_by, safe_reason, operator_action]
+      properties:
+        id: { type: string, format: uuid }
+        credential_status: { type: string, enum: [compromised, replaced] }
+        incident_status: { type: string, enum: [open, replacement_recorded, closed] }
+        suspected_at: { type: string, format: date-time }
+        suspected_by: { type: string, description: Stable host-authenticated operator identifier }
+        safe_reason: { type: string }
+        operator_action: { type: string, description: Instructs external invalidation or rotation }
+        replacement_recorded_at: { type: [string, "null"], format: date-time }
+        replacement_recorded_by: { type: [string, "null"], description: Stable host-authenticated operator identifier }
+    CredentialReplacement:
+      type: object
+      required: [id, configuration_id, previous_credential_id, replacement_credential_id, reason, replaced_by, replaced_at]
+      properties:
+        id: { type: string, format: uuid }
+        configuration_id: { type: string, format: uuid }
+        previous_credential_id: { type: string, format: uuid }
+        replacement_credential_id: { type: string, format: uuid }
+        reason: { type: string, enum: [preventive, compromise_remediation] }
+        incident_id: { type: [string, "null"], format: uuid }
+        replaced_by: { type: string, description: Stable host-authenticated operator identifier }
+        replaced_at: { type: string, format: date-time }
+    ExecutionStatus:
+      type: string
+      enum: [pending, running, completed, partially_completed, failed]
+    ExecutionCounters:
+      type: object
+      required: [repositories_total, repositories_completed, repositories_failed, commits_discovered, commits_verified, allowed_commits, unauthorized_commits]
+      properties:
+        repositories_total: { type: integer, minimum: 0 }
+        repositories_completed: { type: integer, minimum: 0 }
+        repositories_failed: { type: integer, minimum: 0 }
+        commits_discovered: { type: integer, minimum: 0 }
+        commits_verified: { type: integer, minimum: 0, description: Commits whose author validation was newly completed in this execution }
+        allowed_commits: { type: integer, minimum: 0, description: Newly verified allowed commits in this execution }
+        unauthorized_commits: { type: integer, minimum: 0, description: Newly verified unauthorized commits first detected in this execution }
+    Execution:
+      type: object
+      required: [id, configuration_id, trigger, status, revision, counters]
+      properties:
+        id: { type: string, format: uuid }
+        configuration_id: { type: string, format: uuid }
+        trigger: { type: string, enum: [manual, scheduled] }
+        status: { $ref: "#/components/schemas/ExecutionStatus" }
+        revision: { type: integer, minimum: 0 }
+        started_at: { type: [string, "null"], format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+        terminal_reason: { type: [string, "null"] }
+        counters: { $ref: "#/components/schemas/ExecutionCounters" }
+    ExecutionPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Execution" }
+        next_cursor: { type: [string, "null"] }
+    CommitVerification:
+      type: object
+      required: [configuration_id, repository_id, branch, commit_hash, author_name, author_email, committed_at, message, authorization_result, verification_source, verified_at]
+      properties:
+        configuration_id: { type: string, format: uuid }
+        repository_id: { type: string, format: uuid }
+        branch: { type: string }
+        commit_hash: { type: string }
+        author_name: { type: string }
+        author_email: { type: [string, "null"] }
+        committed_at: { type: string, format: date-time }
+        message: { type: string }
+        authorization_result: { type: string, enum: [allowed, unauthorized] }
+        verification_source: { type: string, enum: [new, reused], description: Reused observations do not contribute to this execution's verified or result counters }
+        verified_at: { type: string, format: date-time, description: Completion time of the durable at-most-once verification }
+    CommitVerificationPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CommitVerification" }
+        next_cursor: { type: [string, "null"] }
+    UnauthorizedCommitAlert:
+      type: object
+      required: [id, configuration_id, execution_id, repository_id, branch, commit_hash, author_name, author_email, committed_at, detected_at]
+      properties:
+        id: { type: string, format: uuid }
+        configuration_id: { type: string, format: uuid }
+        execution_id: { type: string, format: uuid, description: Immutable original detection execution; never a later reporting execution }
+        repository_id: { type: string, format: uuid }
+        branch: { type: string }
+        commit_hash: { type: string }
+        author_name: { type: string }
+        author_email: { type: [string, "null"] }
+        committed_at: { type: string, format: date-time }
+        detected_at: { type: string, format: date-time }
+    UnauthorizedCommitPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UnauthorizedCommitAlert" }
+        next_cursor: { type: [string, "null"] }
+    BaselineReset:
+      type: object
+      required: [id, configuration_id, repository_id, branch, previous_checkpoint_hash, new_baseline_hash, operator_id, reason, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        configuration_id: { type: string, format: uuid }
+        repository_id: { type: string }
+        branch: { type: string }
+        previous_checkpoint_hash: { type: [string, "null"] }
+        new_baseline_hash: { type: string }
+        operator_id: { type: string, description: Stable host-authenticated operator identifier }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+    WebSocketTicket:
+      type: object
+      required: [ticket, operator_id, execution_id, expires_at, consumed_at, websocket_url]
+      properties:
+        ticket: { type: string, writeOnly: true, description: Returned once and never stored or logged in plaintext }
+        operator_id: { type: string, readOnly: true, description: Stable authenticated operator binding }
+        execution_id: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time }
+        consumed_at: { type: [string, "null"], format: date-time, readOnly: true }
+        websocket_url: { type: string }
+    Report:
+      type: object
+      required: [execution, repositories_total, repositories_completed, repositories_failed, commits_discovered, commits_verified, allowed_commits, unauthorized_commits, unauthorized_commit_details]
+      properties:
+        execution: { $ref: "#/components/schemas/Execution" }
+        repositories_total: { type: integer, minimum: 0 }
+        repositories_completed: { type: integer, minimum: 0 }
+        repositories_failed: { type: integer, minimum: 0 }
+        commits_discovered: { type: integer, minimum: 0 }
+        commits_verified: { type: integer, minimum: 0, description: Author validations newly completed in this execution; reused verifications are excluded }
+        allowed_commits: { type: integer, minimum: 0, description: Allowed results newly produced in this execution }
+        unauthorized_commits: { type: integer, minimum: 0, description: Unauthorized commits first verified and detected in this execution }
+        unauthorized_commit_details:
+          type: array
+          description: Alerts whose immutable original detection execution is this report's execution
+          items: { $ref: "#/components/schemas/UnauthorizedCommitAlert" }
+        links:
+          type: object
+          additionalProperties: { type: string }
+    GenericPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { type: object, additionalProperties: true }
+        next_cursor: { type: [string, "null"] }

@@ -1,0 +1,2 @@
+from tests.integration.test_persistence import test_commit_verification_is_idempotent_and_alert_is_not_duplicated
+

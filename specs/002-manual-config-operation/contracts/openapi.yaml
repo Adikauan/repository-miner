@@ -1,0 +1,272 @@
+openapi: 3.1.0
+info:
+  title: Repository Miner - Manual Configuration Operation
+  version: 0.1.0
+  description: Contract additions for viewing, editing, and manually starting an existing configuration.
+servers:
+  - url: /api/v1
+paths:
+  /configurations/{configurationId}:
+    parameters:
+      - name: configurationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getConfiguration
+      responses:
+        '200':
+          description: Persisted configuration without credential plaintext
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Configuration' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateConfiguration
+      description: >-
+        Updates only basic configuration fields. Scope, repositories, branch, allowed users,
+        schedule, connection validation, and credentials are updated through their dedicated
+        operations below.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfigurationUpdate' }
+      responses:
+        '200':
+          description: Updated configuration projection
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Configuration' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /configurations/{configurationId}/executions:
+    parameters:
+      - name: configurationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: startManualExecution
+      description: Starts the existing mining flow; disabled configurations are allowed.
+      responses:
+        '202':
+          description: Manual execution accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManualExecutionStarted' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /configurations/{configurationId}/connection-test:
+    parameters:
+      - name: configurationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: validateCurrentConnection
+      responses:
+        '200':
+          description: Current URL and credential reference validated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionValidation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '502': { $ref: '#/components/responses/UpstreamFailure' }
+  /configurations/{configurationId}/repository-tree:
+    parameters:
+      - name: configurationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getRepositoryTree
+      description: Loading groups, subgroups, and repositories requires a validated GitLab connection.
+      responses:
+        '200':
+          description: Available groups, subgroups, and repositories
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RepositoryTreeResponse' }
+        '409': { $ref: '#/components/responses/ConnectionNotValidated' }
+        '502': { $ref: '#/components/responses/UpstreamFailure' }
+  /configurations/{configurationId}/repositories/{repositoryId}/branches:
+    parameters:
+      - name: configurationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: repositoryId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getRepositoryBranches
+      description: Loading and selecting branches requires a validated GitLab connection.
+      responses:
+        '200':
+          description: Available branches
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BranchListResponse' }
+        '409': { $ref: '#/components/responses/ConnectionNotValidated' }
+        '502': { $ref: '#/components/responses/UpstreamFailure' }
+  /configurations/{configurationId}/repository-selections:
+    put:
+      operationId: replaceConfigurationScope
+      description: Requires successful validation of the current GitLab connection.
+      parameters:
+        - name: configurationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScopeUpdate' }
+      responses:
+        '200': { description: Scope saved }
+        '409': { $ref: '#/components/responses/ConnectionNotValidated' }
+  /configurations/{configurationId}/allowed-users:
+    put:
+      operationId: replaceAllowedUsers
+      parameters:
+        - name: configurationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emails]
+              properties:
+                emails:
+                  type: array
+                  items: { type: string, format: email }
+      responses:
+        '200': { description: Normalized allowed e-mails saved }
+        '422': { $ref: '#/components/responses/ValidationError' }
+components:
+  schemas:
+    Configuration:
+      type: object
+      required: [id, name, gitlab_base_url, target_branch, enabled, credential_status, connection_validated, allowed_emails, selections, schedule]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        gitlab_base_url: { type: string, format: uri }
+        credential_status: { type: string, enum: [active, compromised] }
+        connection_validated: { type: boolean }
+        target_branch: { type: string, nullable: true }
+        enabled: { type: boolean }
+        allowed_emails:
+          type: array
+          items: { type: string, format: email }
+        selections:
+          type: array
+          items: { $ref: '#/components/schemas/SelectionRule' }
+        schedule: { $ref: '#/components/schemas/Schedule' }
+    ConfigurationUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        enabled: { type: boolean }
+        timezone: { type: string }
+    RepositoryTreeNode:
+      type: object
+      required: [id, kind, name, path, children]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [group, subgroup, repository] }
+        name: { type: string }
+        path: { type: string }
+        web_url: { type: string, format: uri, nullable: true }
+        children:
+          type: array
+          items: { $ref: '#/components/schemas/RepositoryTreeNode' }
+    RepositoryTreeResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RepositoryTreeNode' }
+    BranchListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { type: string }
+    SelectionRule:
+      type: object
+      required: [kind, external_id, mode]
+      properties:
+        kind: { type: string, enum: [group, subgroup, repository] }
+        external_id: { type: string }
+        mode: { type: string, enum: [include, exclude] }
+    Schedule:
+      type: object
+      required: [recurrence, local_time, timezone]
+      properties:
+        recurrence: { type: string, enum: [daily, weekly, monthly] }
+        local_time: { type: string }
+        weekday: { type: integer, minimum: 1, maximum: 7, nullable: true }
+        day_of_month: { type: integer, minimum: 1, maximum: 31, nullable: true }
+        timezone: { type: string }
+        next_run_at: { type: string, format: date-time, nullable: true }
+    ConnectionValidation:
+      type: object
+      required: [configuration_id, validated]
+      properties:
+        configuration_id: { type: string, format: uuid }
+        validated: { type: boolean }
+    ManualExecutionStarted:
+      type: object
+      required: [execution_id, status]
+      properties:
+        execution_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, running, completed, partially_completed, failed] }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+  responses:
+    NotFound:
+      description: Configuration does not exist
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Validation, compromised credential, or active-execution conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ConnectionNotValidated:
+      description: Dependent change rejected because the current GitLab connection is not validated
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: connection_not_validated
+            message: Validate the current GitLab connection before saving dependent settings.
+    ValidationError:
+      description: Invalid editable field
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UpstreamFailure:
+      description: Safe GitLab connection failure
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
