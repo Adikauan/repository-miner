@@ -345,18 +345,18 @@ A MVP atendeu, mas com ressalvas, as necessidades estabelecidas inicialmente. Ap
 2. $speckit-analyze Foi importante para entender inconsistências com alto impacto no sistema. Apesar disso, foi necessário entender o momento de parar de utilizar, pois acabava encontrando coisas cada vez melhores. Ao que parece, um projeto com sem inconsistências de níveis criticos ou altos podem ser suficiente para atender as necessidades do usuário. Cabe, entretanto, avaliar pontualmente para evitar problemas futuros.
 3. $speckit-implement A implementação do código, apesar de ocorrer de forma fluida, NECESSITA de mais informações além do comando. Adicionar trechos como : "Execute todas as tarefas pendentes desta feature que estiverem desbloqueadas. Não pare ao final de uma fase ou user story se ainda houver tarefas executáveis. Continue implementando, testando e corrigindo até concluir todas as tarefas ou encontrar um bloqueio real." facilitava o desenvolvimento, visto que ele era capaz de executar multiplas tarefas sem necessidade de validação humana.
 
-![Tela de login](Evidências/1-criando_teste.png)
+![Tela de login](1-criando_teste.png)
 
-![Tela de login](Evidências/2-criando_teste.png)
+![Tela de login](2-criando_teste.png)
 
-![Tela de login](Evidências/3-criando_teste.png)
+![Tela de login](3-criando_teste.png)
 
-![Tela de login](Evidências/4-teste_criado.png)
+![Tela de login](4-teste_criado.png)
 
-![Tela de login](Evidências/5-primeira_execucao.png)
+![Tela de login](5-primeira_execucao.png)
 
-![Tela de login](Evidências/6-primeira_execucao_relatorio.png)
+![Tela de login](6-primeira_execucao_relatorio.png)
 
-![Tela de login](Evidências/7-execucao_manual.png)
+![Tela de login](7-execucao_manual.png)
 
 
