@@ -59,7 +59,7 @@ Somente as informações necessárias para análise deverão ser enviadas ao pro
 As execuções deverão registrar início, fim, estado, repositories processados, commits analisados, falhas e achados.
 ```
 
-Com a execução feita, li o documento e percebi que tudo foi escrito em INGLÊS. Será que isso é um padrão das skills ou eles performam melhor assim?
+A execução feita para criação da constitution criou o documento todo em inglês.
 
 #### 2.2. Criando o Specify
 
@@ -203,7 +203,86 @@ Após a execução do Analyze, algumas inconsistências foram classificadas como
 
 #### 2.5. Simplificando o projeto
 
-A ideia inicial seria utilizar LLMs para fazer uma análise semântica do código, mas isso ficará como uma melhoria futura no pipeline. Nesse momento, consideraremos somente análise de commits, validando se os usuários dos commits são permitidos.
+Como eu já estava utilizando ChatGPT para estudo de análise semântica e mineração, ele usou o contexto anterior para me ajudar com a criação desse projeto. Como eu estava olhando coisas mais elaboradas, acabou que o projeto ficou muito mais COMPLEXO que eu gostaria. A ideia era somente utilizar mineração e classificação de commits. A Análise semântica de diffs ficaria para um segundo momento. Por conta disso, simplifiquei o projeto, removendo a utilização de modelos para análise semântica e foquei somente na interface visual e classificação de commits. 
+
+Com isso, criamos um novo Specify:
+
+```
+Criar uma aplicação web para configuração, execução e acompanhamento de mineração de repositories hospedados no GitLab.
+
+O usuário deverá poder criar uma configuração de mineração informando uma URL de uma instância GitLab e uma credencial de acesso.
+
+Após estabelecer a conexão, o sistema deverá consultar o GitLab e apresentar os repositories disponíveis em uma estrutura hierárquica de grupos, subgrupos e repositories.
+
+O usuário deverá poder selecionar um grupo inteiro, um subgrupo ou repositories individuais para fazer parte da configuração de mineração.
+
+Uma configuração deverá possuir uma branch alvo. Inicialmente o cenário principal será a branch QA.
+
+O sistema deverá permitir cadastrar uma lista de usuários esperados para trabalhar na branch configurada. Cada usuário deverá possuir informações suficientes para permitir sua identificação como autor de um commit.
+
+O sistema deverá permitir configurar um provedor de inteligência artificial, incluindo a chave necessária para acesso à API.
+
+A chave da API e a credencial do GitLab deverão ser tratadas como informações sensíveis.
+
+O usuário deverá configurar a periodicidade da execução da mineração, podendo escolher entre:
+
+- diária;
+- semanal;
+- mensal.
+
+Uma configuração deverá poder ser habilitada ou desabilitada.
+
+Quando chegar o momento programado para uma configuração habilitada, o sistema deverá iniciar uma nova execução de mineração.
+
+A execução deverá consultar os repositories configurados e identificar os commits novos existentes na branch alvo desde a última execução válida.
+
+Para cada commit encontrado, deverão ser obtidas informações como:
+
+- hash;
+- autor;
+- e-mail do autor;
+- data;
+- mensagem;
+- arquivos modificados;
+- diff das alterações.
+
+O sistema deverá comparar o autor do commit com os usuários cadastrados para aquela configuração.
+
+Caso seja identificado um commit realizado por um usuário que não esteja configurado para trabalhar naquela branch, deverá ser criado um achado para esse commit.
+
+O diff e as informações relevantes do commit deverão ser submetidos a uma análise semântica por meio do provedor de inteligência artificial configurado.
+
+A análise deverá procurar indícios de alterações que possam introduzir bugs, vulnerabilidades ou comportamentos inesperados.
+
+O resultado da inteligência artificial deve ser tratado como uma indicação de possível risco e não como confirmação de que existe um defeito.
+
+Quando a análise identificar um possível problema, deverá ser criado um achado relacionado ao commit.
+
+Cada achado deverá ser rastreável até o repository, branch, commit, autor e arquivos envolvidos.
+
+O sistema deverá armazenar histórico das execuções realizadas.
+
+Durante uma execução, o usuário deverá conseguir acompanhar seu estado e progresso através da interface web.
+
+Ao final da execução, deverá existir um relatório contendo pelo menos:
+
+- repositories processados;
+- commits analisados;
+- commits com possíveis problemas;
+- autores não esperados;
+- possíveis bugs identificados;
+- possíveis vulnerabilidades identificadas;
+- falhas ocorridas durante a execução.
+
+O relatório deverá permitir consultar os detalhes de cada achado e identificar o commit e o código relacionado.
+
+O processamento deverá ser incremental, evitando analisar novamente commits já processados em uma execução anterior válida.
+
+Falhas na mineração ou análise de um repository não deverão obrigatoriamente interromper o processamento dos demais repositories.
+
+O primeiro MVP não deverá realizar correções automáticas de código, alterações em repositories ou criação automática de merge requests.
+```
+
 
 #### 2.6. Rodando a nova spec
 
@@ -260,10 +339,24 @@ Com isso identificado, optei por separar e executar novas specs para o projeto. 
 
 ## 4. Conclusão e pontos de evolução
 
-A MVP atendeu satisfatoriamente as necessidades estabelecidas inicialmente. Apesar disso, foi necessário entender alguns pontos importantes sobre a utilização do speckit:
+A MVP atendeu, mas com ressalvas, as necessidades estabelecidas inicialmente. Apesar disso, foi necessário entender alguns pontos importantes sobre a utilização do speckit:
 
 1. $speckit-clarify Foi essencial na primeira spec, para estabeler as diretrizes iniciais da constitution e o primeiro plano. Com o avanço das specs, não foram realizadas mais perguntas sobre o sistema, mostrando que as principais inconsistências causadas inicialmente foram resolvidas.
 2. $speckit-analyze Foi importante para entender inconsistências com alto impacto no sistema. Apesar disso, foi necessário entender o momento de parar de utilizar, pois acabava encontrando coisas cada vez melhores. Ao que parece, um projeto com sem inconsistências de níveis criticos ou altos podem ser suficiente para atender as necessidades do usuário. Cabe, entretanto, avaliar pontualmente para evitar problemas futuros.
-3. $speckit-implement A implementação do código, apesar de ocorrer de forma fluida, NECESSITA de mais informações além do comando. Adicionar trechos como : "Execute todas as tarefas pendentes desta feature que estiverem desbloqueadas. Não pare ao final de uma fase ou user story se ainda houver tarefas executáveis. Continue implementando, testando e corrigindo até concluir todas as tarefas ou encontrar um bloqueio real." facilitava o desenvolvimento, visto que ele era capaz de executar multiplas tarefas sem necessidade de validação humana. 
+3. $speckit-implement A implementação do código, apesar de ocorrer de forma fluida, NECESSITA de mais informações além do comando. Adicionar trechos como : "Execute todas as tarefas pendentes desta feature que estiverem desbloqueadas. Não pare ao final de uma fase ou user story se ainda houver tarefas executáveis. Continue implementando, testando e corrigindo até concluir todas as tarefas ou encontrar um bloqueio real." facilitava o desenvolvimento, visto que ele era capaz de executar multiplas tarefas sem necessidade de validação humana.
 
-No mais, sinto a necessidade de explorar novos frameworks para encontrar um ponto de equilibrio entre utilização e velocidade. Senti em alguns momentos que um vibe coding resolveria meu problema mais rápido, mas a que custo?
+![Tela de login](Evidências/1-criando_teste.png)
+
+![Tela de login](Evidências/2-criando_teste.png)
+
+![Tela de login](Evidências/3-criando_teste.png)
+
+![Tela de login](Evidências/4-teste_criado.png)
+
+![Tela de login](Evidências/5-primeira_execucao.png)
+
+![Tela de login](Evidências/6-primeira_execucao_relatorio.png)
+
+![Tela de login](Evidências/7-execucao_manual.png)
+
+
